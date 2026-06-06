@@ -33,6 +33,44 @@ const PURSUIT_STATE = {
     PURSUIT: 'pursuit'
 };
 
+// Image assets
+const images = {
+    player: null,
+    police: null
+};
+
+// Load images
+function loadImages() {
+    return Promise.all([
+        new Promise((resolve) => {
+            const playerImg = new Image();
+            playerImg.onload = () => {
+                images.player = playerImg;
+                resolve();
+            };
+            playerImg.onerror = () => {
+                console.warn('Failed to load player image');
+                resolve();
+            };
+            // Using a placeholder - replace with your actual player sprite URL
+            playerImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ffffff"/></svg>';
+        }),
+        new Promise((resolve) => {
+            const policeImg = new Image();
+            policeImg.onload = () => {
+                images.police = policeImg;
+                resolve();
+            };
+            policeImg.onerror = () => {
+                console.warn('Failed to load police image');
+                resolve();
+            };
+            // Using a placeholder - replace with your actual police sprite URL
+            policeImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23000000"/></svg>';
+        })
+    ]);
+}
+
 class Vector2 {
     constructor(x = 0, y = 0) {
         this.x = x;
@@ -129,10 +167,11 @@ class Vehicle {
 
 class PlayerVehicle extends Vehicle {
     constructor(x, y) {
-        super(x, y, 30, 50, '#ffffff', PLAYER_MAX_SPEED);
+        super(x, y, 40, 60, '#ffffff', PLAYER_MAX_SPEED);
         this.damage = 0;
         this.acceleration = 300;
         this.brakingForce = 400;
+        this.spriteImage = images.player;
     }
     
     accelerate() {
@@ -177,17 +216,22 @@ class PlayerVehicle extends Vehicle {
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
         
-        // Draw vehicle body
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
-        
-        // Draw red interior accents
-        ctx.fillStyle = '#ff0000';
-        ctx.fillRect(-this.width / 2 + 5, -this.height / 2 + 10, this.width - 10, 15);
-        
-        // Draw direction indicator
-        ctx.fillStyle = '#00ff00';
-        ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
+        // Draw sprite if loaded, otherwise fallback to geometric shape
+        if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalHeight !== 0) {
+            ctx.drawImage(this.spriteImage, -this.width / 2, -this.height / 2, this.width, this.height);
+        } else {
+            // Fallback geometric vehicle
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+            
+            // Draw red interior accents
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(-this.width / 2 + 5, -this.height / 2 + 10, this.width - 10, 15);
+            
+            // Draw direction indicator
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
+        }
         
         ctx.restore();
     }
@@ -195,13 +239,14 @@ class PlayerVehicle extends Vehicle {
 
 class PoliceVehicle extends Vehicle {
     constructor(x, y) {
-        super(x, y, 28, 48, '#000000', POLICE_MAX_SPEED);
+        super(x, y, 38, 58, '#000000', POLICE_MAX_SPEED);
         this.acceleration = 280;
         this.detectionRange = 300;
         this.visualRange = 250;
         this.state = PURSUIT_STATE.SEARCH;
         this.searchTimer = 0;
         this.lastPlayerPos = new Vector2(x, y);
+        this.spriteImage = images.police;
     }
     
     update(dt, player) {
@@ -252,24 +297,29 @@ class PoliceVehicle extends Vehicle {
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
         
-        // Draw vehicle body
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
-        
-        // Draw police stripe
-        ctx.fillStyle = '#ffff00';
-        ctx.fillRect(-this.width / 2, -this.height / 2 + 18, this.width, 6);
-        
-        // Draw emergency lights
-        ctx.fillStyle = '#ff0000';
-        ctx.beginPath();
-        ctx.arc(-this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = '#0000ff';
-        ctx.beginPath();
-        ctx.arc(this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
-        ctx.fill();
+        // Draw sprite if loaded, otherwise fallback to geometric shape
+        if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalHeight !== 0) {
+            ctx.drawImage(this.spriteImage, -this.width / 2, -this.height / 2, this.width, this.height);
+        } else {
+            // Fallback geometric vehicle
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+            
+            // Draw police stripe
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(-this.width / 2, -this.height / 2 + 18, this.width, 6);
+            
+            // Draw emergency lights
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(-this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#0000ff';
+            ctx.beginPath();
+            ctx.arc(this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
         
         ctx.restore();
     }
@@ -280,14 +330,15 @@ class TouchController {
         this.game = game;
         this.gasButton = document.getElementById('gas-button');
         this.brakeButton = document.getElementById('brake-button');
-        this.leftStick = document.getElementById('left-stick');
-        this.stickBg = document.querySelector('.control-stick-bg');
         
         this.gasActive = false;
         this.brakeActive = false;
-        this.stickX = 0;
-        this.stickY = 0;
-        this.stickTouchId = null;
+        
+        // Touch steering
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.steeringAngle = 0;
+        this.isTouching = false;
         
         this.setupControls();
     }
@@ -325,95 +376,56 @@ class TouchController {
             this.brakeActive = false;
         });
         
-        // Joystick
-        this.stickBg.addEventListener('touchstart', (e) => this.handleStickStart(e));
-        this.stickBg.addEventListener('touchmove', (e) => this.handleStickMove(e));
-        this.stickBg.addEventListener('touchend', (e) => this.handleStickEnd(e));
+        // Touch steering on canvas
+        canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), false);
+        canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), false);
+        canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), false);
         
-        this.stickBg.addEventListener('mousedown', (e) => this.handleStickStart(e));
-        document.addEventListener('mousemove', (e) => this.handleStickMove(e));
-        document.addEventListener('mouseup', (e) => this.handleStickEnd(e));
+        // Mouse steering for desktop
+        canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e), false);
     }
     
-    handleStickStart(e) {
-        if (e.touches) {
-            this.stickTouchId = e.touches[0].identifier;
-        }
-        this.updateStick(e);
-    }
-    
-    handleStickMove(e) {
-        if (this.stickTouchId === null && e.touches) return;
-        if (e.touches) {
-            let foundTouch = false;
-            for (let touch of e.touches) {
-                if (touch.identifier === this.stickTouchId) {
-                    this.updateStick(touch);
-                    foundTouch = true;
-                    break;
-                }
-            }
-            if (!foundTouch && this.stickTouchId !== null) {
-                this.stickX = 0;
-                this.stickY = 0;
-            }
-        } else if (this.stickTouchId === null) {
-            this.updateStick(e);
+    handleTouchStart(e) {
+        if (e.touches.length > 0) {
+            this.touchStartX = e.touches[0].clientX;
+            this.touchStartY = e.touches[0].clientY;
+            this.isTouching = true;
         }
     }
     
-    handleStickEnd(e) {
-        if (e.touches) {
-            let foundTouch = false;
-            for (let touch of e.touches) {
-                if (touch.identifier === this.stickTouchId) {
-                    foundTouch = true;
-                    break;
-                }
-            }
-            if (!foundTouch) {
-                this.stickTouchId = null;
-                this.stickX = 0;
-                this.stickY = 0;
-            }
-        } else {
-            this.stickTouchId = null;
-            this.stickX = 0;
-            this.stickY = 0;
-        }
-    }
-    
-    updateStick(e) {
-        const rect = this.stickBg.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const maxRadius = rect.width / 2 - 25;
+    handleTouchMove(e) {
+        if (!this.isTouching || e.touches.length === 0) return;
         
-        let clientX, clientY;
-        if (e.touches) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
-        }
+        e.preventDefault();
         
-        const dx = clientX - centerX;
-        const dy = clientY - centerY;
+        const currentX = e.touches[0].clientX;
+        const currentY = e.touches[0].clientY;
+        
+        const dx = currentX - this.touchStartX;
+        const dy = currentY - this.touchStartY;
+        
+        // Calculate steering angle from touch movement
+        this.steeringAngle = Math.atan2(dy, dx);
+    }
+    
+    handleTouchEnd(e) {
+        this.isTouching = false;
+        this.steeringAngle = 0;
+    }
+    
+    handleMouseMove(e) {
+        // Get player position in screen space
+        const playerScreenX = (this.game.player.pos.x / GAME_WIDTH) * canvas.width;
+        const playerScreenY = (this.game.player.pos.y / GAME_HEIGHT) * canvas.height;
+        
+        const dx = e.clientX - playerScreenX;
+        const dy = e.clientY - playerScreenY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        if (distance > maxRadius) {
-            this.stickX = (dx / distance) * maxRadius;
-            this.stickY = (dy / distance) * maxRadius;
-        } else {
-            this.stickX = dx;
-            this.stickY = dy;
+        // Only steer if mouse is within reasonable distance
+        if (distance > 20 && distance < 500) {
+            this.steeringAngle = Math.atan2(dy, dx);
         }
-        
-        // Update stick visual position
-        const offsetX = (this.stickX / maxRadius) * (rect.width / 2 - 25);
-        const offsetY = (this.stickY / maxRadius) * (rect.height / 2 - 25);
-        this.leftStick.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
     }
     
     update() {
@@ -424,10 +436,9 @@ class TouchController {
             this.game.player.brake();
         }
         
-        // Joystick steering
-        if (Math.abs(this.stickX) > 5 || Math.abs(this.stickY) > 5) {
-            const angle = Math.atan2(this.stickY, this.stickX);
-            this.game.player.steerToAngle(angle);
+        // Touch/mouse steering
+        if (this.isTouching || this.steeringAngle !== 0) {
+            this.game.player.steerToAngle(this.steeringAngle);
         }
     }
 }
@@ -637,6 +648,8 @@ class Game {
     }
 }
 
-// Start the game
-const game = new Game();
-game.run();
+// Load images and start the game
+loadImages().then(() => {
+    const game = new Game();
+    game.run();
+});
