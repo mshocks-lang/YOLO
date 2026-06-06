@@ -71,6 +71,55 @@ function loadImages() {
     ]);
 }
 
+class Camera {
+    constructor(width, height) {
+        this.x = 0;
+        this.y = 0;
+        this.width = width;
+        this.height = height;
+        this.zoom = 1;
+        this.smoothing = 0.1; // Smooth camera follow
+    }
+
+    update(target) {
+        // Calculate desired camera position (centered on target)
+        const desiredX = target.x - this.width / (2 * this.zoom);
+        const desiredY = target.y - this.height / (2 * this.zoom);
+
+        // Smooth camera movement
+        this.x += (desiredX - this.x) * this.smoothing;
+        this.y += (desiredY - this.y) * this.smoothing;
+
+        // Clamp camera to world bounds
+        this.x = Math.max(0, Math.min(this.x, GAME_WIDTH - this.width / this.zoom));
+        this.y = Math.max(0, Math.min(this.y, GAME_HEIGHT - this.height / this.zoom));
+    }
+
+    apply(ctx) {
+        ctx.save();
+        ctx.scale(this.zoom, this.zoom);
+        ctx.translate(-this.x, -this.y);
+    }
+
+    restore(ctx) {
+        ctx.restore();
+    }
+
+    worldToScreen(worldX, worldY) {
+        return {
+            x: (worldX - this.x) * this.zoom,
+            y: (worldY - this.y) * this.zoom
+        };
+    }
+
+    screenToWorld(screenX, screenY) {
+        return {
+            x: screenX / this.zoom + this.x,
+            y: screenY / this.zoom + this.y
+        };
+    }
+}
+
 class Vector2 {
     constructor(x = 0, y = 0) {
         this.x = x;
@@ -325,20 +374,129 @@ class PoliceVehicle extends Vehicle {
     }
 }
 
+class Joystick {
+    constructor(container, size = 120) {
+        this.container = container;
+        this.size = size;
+        this.radius = size / 2;
+        this.x = 0;
+        this.y = 0;
+        this.active = false;
+        this.angle = 0;
+        this.distance = 0;
+
+        this.stickElement = document.getElementById('left-stick');
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        const container = this.container;
+
+        // Touch events
+        container.addEventListener('touchstart', (e) => this.handleStart(e), false);
+        container.addEventListener('touchmove', (e) => this.handleMove(e), false);
+        container.addEventListener('touchend', (e) => this.handleEnd(e), false);
+
+        // Mouse events (for desktop testing)
+        container.addEventListener('mousedown', (e) => this.handleStart(e), false);
+        document.addEventListener('mousemove', (e) => this.handleMove(e), false);
+        document.addEventListener('mouseup', (e) => this.handleEnd(e), false);
+    }
+
+    handleStart(e) {
+        if (e.touches) {
+            e.preventDefault();
+            this.active = true;
+        } else if (e.button === 0) {
+            this.active = true;
+        }
+    }
+
+    handleMove(e) {
+        if (!this.active) {
+            this.reset();
+            return;
+        }
+
+        const rect = this.container.getBoundingClientRect();
+        let clientX, clientY;
+
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const dx = clientX - centerX;
+        const dy = clientY - centerY;
+
+        this.distance = Math.sqrt(dx * dx + dy * dy);
+        const maxDistance = this.radius - 30;
+
+        if (this.distance > maxDistance) {
+            const angle = Math.atan2(dy, dx);
+            this.x = Math.cos(angle) * maxDistance;
+            this.y = Math.sin(angle) * maxDistance;
+            this.distance = maxDistance;
+        } else {
+            this.x = dx;
+            this.y = dy;
+        }
+
+        this.angle = Math.atan2(this.y, this.x);
+        this.updateVisuals();
+    }
+
+    handleEnd(e) {
+        if (e.touches && e.touches.length === 0) {
+            this.active = false;
+            this.reset();
+        } else if (!e.touches) {
+            this.active = false;
+            this.reset();
+        }
+    }
+
+    reset() {
+        this.x = 0;
+        this.y = 0;
+        this.angle = 0;
+        this.distance = 0;
+        this.updateVisuals();
+    }
+
+    updateVisuals() {
+        const offsetX = 50 + this.x;
+        const offsetY = 50 + this.y;
+        this.stickElement.style.transform = `translate(calc(-50% + ${this.x}px), calc(-50% + ${this.y}px))`;
+    }
+
+    getAngle() {
+        return this.angle;
+    }
+
+    getDistance() {
+        return Math.min(1, this.distance / (this.radius - 30));
+    }
+}
+
 class TouchController {
     constructor(game) {
         this.game = game;
         this.gasButton = document.getElementById('gas-button');
         this.brakeButton = document.getElementById('brake-button');
+        this.joystickContainer = document.querySelector('.control-stick-bg');
         
         this.gasActive = false;
         this.brakeActive = false;
         
-        // Touch steering
-        this.touchStartX = 0;
-        this.touchStartY = 0;
-        this.steeringAngle = 0;
-        this.isTouching = false;
+        // Initialize joystick
+        this.joystick = new Joystick(this.joystickContainer, 120);
         
         this.setupControls();
     }
@@ -375,57 +533,6 @@ class TouchController {
         this.brakeButton.addEventListener('mouseup', () => {
             this.brakeActive = false;
         });
-        
-        // Touch steering on canvas
-        canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), false);
-        canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), false);
-        canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), false);
-        
-        // Mouse steering for desktop
-        canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e), false);
-    }
-    
-    handleTouchStart(e) {
-        if (e.touches.length > 0) {
-            this.touchStartX = e.touches[0].clientX;
-            this.touchStartY = e.touches[0].clientY;
-            this.isTouching = true;
-        }
-    }
-    
-    handleTouchMove(e) {
-        if (!this.isTouching || e.touches.length === 0) return;
-        
-        e.preventDefault();
-        
-        const currentX = e.touches[0].clientX;
-        const currentY = e.touches[0].clientY;
-        
-        const dx = currentX - this.touchStartX;
-        const dy = currentY - this.touchStartY;
-        
-        // Calculate steering angle from touch movement
-        this.steeringAngle = Math.atan2(dy, dx);
-    }
-    
-    handleTouchEnd(e) {
-        this.isTouching = false;
-        this.steeringAngle = 0;
-    }
-    
-    handleMouseMove(e) {
-        // Get player position in screen space
-        const playerScreenX = (this.game.player.pos.x / GAME_WIDTH) * canvas.width;
-        const playerScreenY = (this.game.player.pos.y / GAME_HEIGHT) * canvas.height;
-        
-        const dx = e.clientX - playerScreenX;
-        const dy = e.clientY - playerScreenY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Only steer if mouse is within reasonable distance
-        if (distance > 20 && distance < 500) {
-            this.steeringAngle = Math.atan2(dy, dx);
-        }
     }
     
     update() {
@@ -436,9 +543,9 @@ class TouchController {
             this.game.player.brake();
         }
         
-        // Touch/mouse steering
-        if (this.isTouching || this.steeringAngle !== 0) {
-            this.game.player.steerToAngle(this.steeringAngle);
+        // Joystick steering
+        if (this.joystick.active && this.joystick.distance > 10) {
+            this.game.player.steerToAngle(this.joystick.getAngle());
         }
     }
 }
@@ -449,6 +556,9 @@ class Game {
         this.pursuitState = PURSUIT_STATE.SEARCH;
         this.lastTime = Date.now();
         this.paused = false;
+        
+        // Create camera
+        this.camera = new Camera(canvas.width, canvas.height);
         
         // Create vehicles
         this.player = new PlayerVehicle(GAME_WIDTH / 2, GAME_HEIGHT - 100);
@@ -582,6 +692,9 @@ class Game {
         this.police.update(cappedDt, this.player);
         this.checkCollisions();
         
+        // Update camera to follow player
+        this.camera.update(this.player.pos);
+        
         // Update pursuit state for HUD
         this.pursuitState = this.police.state;
         
@@ -599,6 +712,9 @@ class Game {
         // Clear canvas
         ctx.fillStyle = '#222222';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply camera transformation
+        this.camera.apply(ctx);
         
         // Draw city grid
         ctx.strokeStyle = '#333333';
@@ -635,6 +751,9 @@ class Game {
         // Draw vehicles
         this.player.draw(ctx);
         this.police.draw(ctx);
+        
+        // Restore canvas transformation
+        this.camera.restore(ctx);
         
         // Update HUD
         document.getElementById('pursuit-status').textContent = this.pursuitState.toUpperCase();
