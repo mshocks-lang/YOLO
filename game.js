@@ -406,12 +406,11 @@ class PlayerVehicle extends Vehicle {
         this.acceleration = 300;
         this.brakingForce = 400;
         this.spriteImage = images.player;
-        this.desiredAngle = 0; // Where player wants to face
-        this.rotationSpeed = 0.1; // How fast the car turns
+        this.desiredAngle = 0;
+        this.rotationSpeed = 0.1;
     }
     
     accelerate() {
-        // Accelerate in the direction the sprite is facing
         const dir = new Vector2(Math.cos(this.angle), Math.sin(this.angle));
         this.applyForce(dir.multiply(this.acceleration));
     }
@@ -438,17 +437,13 @@ class PlayerVehicle extends Vehicle {
     }
     
     update(dt) {
-        // Smoothly rotate sprite to desired angle
         let angleDiff = this.desiredAngle - this.angle;
         
-        // Normalize angle difference to [-PI, PI]
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
         
-        // Apply rotation with smooth interpolation
         this.angle += angleDiff * this.rotationSpeed;
         
-        // Call parent update (which moves the vehicle)
         super.update(dt);
     }
     
@@ -468,7 +463,6 @@ class PlayerVehicle extends Vehicle {
             ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
         }
         
-        // Draw direction arrow indicator
         ctx.strokeStyle = '#ffff00';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -502,22 +496,18 @@ class PoliceVehicle extends Vehicle {
 
         const distToPlayer = this.pos.distance(player.pos);
         
-        // Priority 1: Containment - Try to block player's escape
         const playerDistFromCenter = Math.sqrt(
             Math.pow(player.pos.x - CITY_CENTER_X, 2) + 
             Math.pow(player.pos.y - CITY_CENTER_Y, 2)
         );
         
         if (playerDistFromCenter > CITY_RADIUS - 1000) {
-            // Player is near the border, focus on containment
             this.state = PURSUIT_STATE.CONTAINMENT;
             this.containmentBehavior(player, allPolice);
         } else if (distToPlayer < this.visualRange) {
-            // Player detected, pursue but coordinate
             this.state = PURSUIT_STATE.PURSUIT;
             this.coordinatedPursuitBehavior(player, allPolice);
         } else {
-            // Search for player
             this.state = PURSUIT_STATE.SEARCH;
             this.searchBehavior();
         }
@@ -530,14 +520,12 @@ class PoliceVehicle extends Vehicle {
         this.applyForce(toPlayer.multiply(this.acceleration * 1.2));
         this.angle = Math.atan2(toPlayer.y, toPlayer.x);
         
-        // Try to pit maneuver if conditions are right
         const distToPlayer = this.pos.distance(player.pos);
         if (distToPlayer < 150 && this.pitAttemptCooldown === 0 && Math.random() < 0.02) {
             this.attemptPitManeuver(player);
             this.pitAttemptCooldown = 5;
         }
         
-        // Try to ram if moving fast enough
         if (distToPlayer < 120 && this.ramCooldown === 0 && this.vel.magnitude() > 100) {
             this.applyForce(toPlayer.multiply(this.acceleration * 2));
             this.ramCooldown = 3;
@@ -545,13 +533,8 @@ class PoliceVehicle extends Vehicle {
     }
     
     containmentBehavior(player, allPolice) {
-        // Calculate player's direction of travel
         const playerDir = player.vel.normalize();
-        
-        // Predict where player is heading
         const predictedPos = player.pos.add(playerDir.multiply(500));
-        
-        // Position to intercept and block
         const toIntercept = predictedPos.subtract(this.pos);
         
         if (toIntercept.magnitude() > 10) {
@@ -560,21 +543,17 @@ class PoliceVehicle extends Vehicle {
             this.angle = Math.atan2(dir.y, dir.x);
         }
         
-        // Try to box in player with other police
         this.coordinateWithOtherUnits(player, allPolice);
     }
     
     coordinateWithOtherUnits(player, allPolice) {
-        // Find other nearby police units
         for (let other of allPolice) {
             if (other.id !== this.id) {
                 const distToOther = this.pos.distance(other.pos);
                 if (distToOther < 300 && distToOther > 0) {
-                    // Coordinate to box in player
                     const midpoint = this.pos.add(other.pos).multiply(0.5);
                     const toPlayer = player.pos.subtract(midpoint);
                     
-                    // Move in formation to trap player
                     if (toPlayer.magnitude() < 400) {
                         const dir = toPlayer.normalize();
                         this.applyForce(dir.multiply(this.acceleration * 0.5));
@@ -585,26 +564,21 @@ class PoliceVehicle extends Vehicle {
     }
     
     attemptPitManeuver(player) {
-        // Calculate angle to perform PIT
         const toPlayer = player.pos.subtract(this.pos);
         const angle = Math.atan2(toPlayer.y, toPlayer.x);
         
-        // Angle difference from player's direction
         let angleDiff = angle - player.angle;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
         
-        // If we're at an angle, increase damage
         if (Math.abs(angleDiff) > 0.5) {
             player.takeDamage(8);
-            // Push player back
             const pushDir = player.vel.normalize().multiply(-150);
             player.applyForce(pushDir);
         }
     }
     
     searchBehavior() {
-        // Random patrol
         const angle = Math.random() * Math.PI * 2;
         const searchDir = new Vector2(Math.cos(angle), Math.sin(angle));
         this.applyForce(searchDir.multiply(this.acceleration * 0.5));
@@ -660,131 +634,76 @@ class PoliceRoadblock {
     }
 }
 
-class Joystick {
-    constructor(container, size = 120) {
-        this.container = container;
-        this.size = size;
-        this.radius = size / 2;
-        this.x = 0;
-        this.y = 0;
-        this.active = false;
-        this.angle = 0;
-        this.distance = 0;
-
-        this.stickElement = document.getElementById('left-stick');
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        const container = this.container;
-
-        container.addEventListener('touchstart', (e) => this.handleStart(e), false);
-        container.addEventListener('touchmove', (e) => this.handleMove(e), false);
-        container.addEventListener('touchend', (e) => this.handleEnd(e), false);
-
-        container.addEventListener('mousedown', (e) => this.handleStart(e), false);
-        document.addEventListener('mousemove', (e) => this.handleMove(e), false);
-        document.addEventListener('mouseup', (e) => this.handleEnd(e), false);
-    }
-
-    handleStart(e) {
-        if (e.touches) {
-            e.preventDefault();
-            this.active = true;
-        } else if (e.button === 0) {
-            this.active = true;
-        }
-    }
-
-    handleMove(e) {
-        if (!this.active) {
-            this.reset();
-            return;
-        }
-
-        const rect = this.container.getBoundingClientRect();
-        let clientX, clientY;
-
-        if (e.touches) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
-        }
-
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        const dx = clientX - centerX;
-        const dy = clientY - centerY;
-
-        this.distance = Math.sqrt(dx * dx + dy * dy);
-        const maxDistance = this.radius - 30;
-
-        if (this.distance > maxDistance) {
-            const angle = Math.atan2(dy, dx);
-            this.x = Math.cos(angle) * maxDistance;
-            this.y = Math.sin(angle) * maxDistance;
-            this.distance = maxDistance;
-        } else {
-            this.x = dx;
-            this.y = dy;
-        }
-
-        this.angle = Math.atan2(this.y, this.x);
-        this.updateVisuals();
-    }
-
-    handleEnd(e) {
-        if (e.touches && e.touches.length === 0) {
-            this.active = false;
-            this.reset();
-        } else if (!e.touches) {
-            this.active = false;
-            this.reset();
-        }
-    }
-
-    reset() {
-        this.x = 0;
-        this.y = 0;
-        this.angle = 0;
-        this.distance = 0;
-        this.updateVisuals();
-    }
-
-    updateVisuals() {
-        const offsetX = 50 + this.x;
-        const offsetY = 50 + this.y;
-        this.stickElement.style.transform = `translate(calc(-50% + ${this.x}px), calc(-50% + ${this.y}px))`;
-    }
-
-    getAngle() {
-        return this.angle;
-    }
-
-    getDistance() {
-        return Math.min(1, this.distance / (this.radius - 30));
-    }
-}
-
 class TouchController {
     constructor(game) {
         this.game = game;
+        this.upArrowBtn = document.getElementById('up-arrow-btn');
+        this.downArrowBtn = document.getElementById('down-arrow-btn');
+        this.leftArrowBtn = document.getElementById('left-arrow-btn');
+        this.rightArrowBtn = document.getElementById('right-arrow-btn');
         this.gasButton = document.getElementById('gas-button');
         this.brakeButton = document.getElementById('brake-button');
-        this.joystickContainer = document.querySelector('.control-stick-bg');
         
+        this.upActive = false;
+        this.downActive = false;
+        this.leftActive = false;
+        this.rightActive = false;
         this.gasActive = false;
         this.brakeActive = false;
-        
-        this.joystick = new Joystick(this.joystickContainer, 120);
         
         this.setupControls();
     }
     
     setupControls() {
+        // Up arrow
+        this.upArrowBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.upActive = true;
+        });
+        this.upArrowBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.upActive = false;
+        });
+        this.upArrowBtn.addEventListener('mousedown', () => this.upActive = true);
+        this.upArrowBtn.addEventListener('mouseup', () => this.upActive = false);
+        
+        // Down arrow
+        this.downArrowBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.downActive = true;
+        });
+        this.downArrowBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.downActive = false;
+        });
+        this.downArrowBtn.addEventListener('mousedown', () => this.downActive = true);
+        this.downArrowBtn.addEventListener('mouseup', () => this.downActive = false);
+        
+        // Left arrow
+        this.leftArrowBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.leftActive = true;
+        });
+        this.leftArrowBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.leftActive = false;
+        });
+        this.leftArrowBtn.addEventListener('mousedown', () => this.leftActive = true);
+        this.leftArrowBtn.addEventListener('mouseup', () => this.leftActive = false);
+        
+        // Right arrow
+        this.rightArrowBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.rightActive = true;
+        });
+        this.rightArrowBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.rightActive = false;
+        });
+        this.rightArrowBtn.addEventListener('mousedown', () => this.rightActive = true);
+        this.rightArrowBtn.addEventListener('mouseup', () => this.rightActive = false);
+        
+        // Gas button
         this.gasButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.gasActive = true;
@@ -793,13 +712,10 @@ class TouchController {
             e.preventDefault();
             this.gasActive = false;
         });
-        this.gasButton.addEventListener('mousedown', () => {
-            this.gasActive = true;
-        });
-        this.gasButton.addEventListener('mouseup', () => {
-            this.gasActive = false;
-        });
+        this.gasButton.addEventListener('mousedown', () => this.gasActive = true);
+        this.gasButton.addEventListener('mouseup', () => this.gasActive = false);
         
+        // Brake button
         this.brakeButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.brakeActive = true;
@@ -808,24 +724,28 @@ class TouchController {
             e.preventDefault();
             this.brakeActive = false;
         });
-        this.brakeButton.addEventListener('mousedown', () => {
-            this.brakeActive = true;
-        });
-        this.brakeButton.addEventListener('mouseup', () => {
-            this.brakeActive = false;
-        });
+        this.brakeButton.addEventListener('mousedown', () => this.brakeActive = true);
+        this.brakeButton.addEventListener('mouseup', () => this.brakeActive = false);
     }
     
     update() {
+        if (this.upActive) {
+            this.game.player.accelerate();
+        }
+        if (this.downActive) {
+            this.game.player.brake();
+        }
+        if (this.leftActive) {
+            this.game.player.steerLeft();
+        }
+        if (this.rightActive) {
+            this.game.player.steerRight();
+        }
         if (this.gasActive) {
             this.game.player.accelerate();
         }
         if (this.brakeActive) {
             this.game.player.brake();
-        }
-        
-        if (this.joystick.active && this.joystick.distance > 10) {
-            this.game.player.steerToAngle(this.joystick.getAngle());
         }
     }
 }
@@ -841,7 +761,6 @@ class Game {
         
         this.player = new PlayerVehicle(CITY_CENTER_X, CITY_CENTER_Y);
         
-        // Create multiple police units
         this.policeUnits = [];
         this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X + 1000, CITY_CENTER_Y, 0));
         this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X - 1000, CITY_CENTER_Y, 1));
@@ -887,7 +806,6 @@ class Game {
     }
     
     checkCollisions() {
-        // Police collision with player
         for (let police of this.policeUnits) {
             const distToPolice = this.player.pos.distance(police.pos);
             if (distToPolice < 60) {
@@ -896,7 +814,6 @@ class Game {
             }
         }
         
-        // Roadblock collisions
         for (let roadblock of this.roadblocks) {
             if (roadblock.collidesWith(this.player)) {
                 this.player.takeDamage(5);
@@ -905,12 +822,10 @@ class Game {
     }
     
     spawnRoadblock() {
-        // Spawn roadblocks strategically near exits
         if (this.roadblocks.length < 6) {
             const exits = this.roadNetwork.getExits();
             const exit = exits[Math.floor(Math.random() * exits.length)];
             
-            // Spawn near exit but offset
             const angle = Math.random() * Math.PI * 2;
             const distance = 500 + Math.random() * 1000;
             const x = exit.x + Math.cos(angle) * distance;
@@ -970,7 +885,6 @@ class Game {
         this.handleInput();
         this.player.update(cappedDt);
         
-        // Update all police units with coordination
         for (let police of this.policeUnits) {
             police.update(cappedDt, this.player, this.policeUnits);
         }
@@ -993,7 +907,6 @@ class Game {
         
         this.camera.apply(ctx);
         
-        // Draw city boundary
         ctx.strokeStyle = 'rgba(255, 100, 100, 0.3)';
         ctx.lineWidth = 3;
         ctx.setLineDash([10, 10]);
@@ -1002,15 +915,12 @@ class Game {
         ctx.stroke();
         ctx.setLineDash([]);
         
-        // Draw roads first
         this.roadNetwork.draw(ctx);
         
-        // Draw roadblocks
         for (let roadblock of this.roadblocks) {
             roadblock.draw(ctx);
         }
         
-        // Draw vehicles
         this.player.draw(ctx);
         for (let police of this.policeUnits) {
             police.draw(ctx);
@@ -1018,11 +928,9 @@ class Game {
         
         this.camera.restore(ctx);
         
-        // Update HUD
         document.getElementById('pursuit-status').textContent = this.pursuitState.toUpperCase();
         document.getElementById('damage-value').textContent = Math.floor(this.player.damage) + '%';
         
-        // Calculate distance to nearest exit
         const exits = this.roadNetwork.getExits();
         let minDist = Infinity;
         for (let exit of exits) {
