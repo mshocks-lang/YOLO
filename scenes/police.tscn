@@ -1,0 +1,34 @@
+[gd_scene load_steps=3 format=3 uid="uid://b5p3wp6q2k7ll"]
+
+[ext_resource type="Script" path="res://scripts/police.gd" id="1_x2q3x8"]
+
+[sub_resource type="RectangleShape2D" id="1_7xm0v"]
+size = Vector2(30, 40)
+
+[node name="Police" type="CharacterBody2D"]
+position = Vector2(200, 150)
+script = ExtResource("1_x2q3x8")
+
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -15.0
+offset_top = -20.0
+offset_right = 15.0
+offset_bottom = 20.0
+color = Color(0, 0, 0, 1)
+
+[node name="LightTop" type="ColorRect" parent="Body"]
+offset_left = -18.0
+offset_top = -22.0
+offset_right = -8.0
+offset_bottom = -18.0
+color = Color(0.2, 0.2, 1, 1)
+
+[node name="LightTop2" type="ColorRect" parent="Body"]
+offset_left = 8.0
+offset_top = -22.0
+offset_right = 18.0
+offset_bottom = -18.0
+color = Color(1, 0.2, 0.2, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("1_7xm0v")
