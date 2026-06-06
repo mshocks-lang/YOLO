@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO - Prototype 1</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud">
+            <div id="status-panel" class="hud-panel top-left">
+                <div class="label">STATUS</div>
+                <div id="pursuit-status" class="value">SEARCH</div>
+            </div>
+            <div id="damage-panel" class="hud-panel top-right">
+                <div class="label">DAMAGE</div>
+                <div id="damage-value" class="value">0%</div>
+            </div>
+            <div id="district-panel" class="hud-panel bottom-right">
+                <div class="label">DISTRICT</div>
+                <div id="district-value" class="value">CENTRAL</div>
+            </div>
+        </div>
+        <div id="event-screen" class="hidden">
+            <div id="event-content"></div>
+        </div>
+        
+        <!-- Touch Controls -->
+        <div id="touch-controls">
+            <div class="control-stick-container">
+                <div class="control-stick-bg">
+                    <div id="left-stick" class="control-stick"></div>
+                </div>
+                <div class="stick-label">STEER</div>
+            </div>
+            <div class="control-buttons-container">
+                <button id="gas-button" class="control-button gas-btn">GAS</button>
+                <button id="brake-button" class="control-button brake-btn">BRAKE</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
