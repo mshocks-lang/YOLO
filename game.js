@@ -52,8 +52,8 @@ function loadImages() {
                 console.warn('Failed to load player image');
                 resolve();
             };
-            // Using a placeholder - replace with your actual player sprite URL
-            playerImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ffffff"/></svg>';
+            // Player car uses flipped image
+            playerImg.src = 'flipped_image (2).png';
         }),
         new Promise((resolve) => {
             const policeImg = new Image();
@@ -65,8 +65,8 @@ function loadImages() {
                 console.warn('Failed to load police image');
                 resolve();
             };
-            // Using a placeholder - replace with your actual police sprite URL
-            policeImg.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23000000"/></svg>';
+            // Police car uses file_000000... image
+            policeImg.src = 'file_00000000f820720c96555bdb986101c9-removebg-preview.png';
         })
     ]);
 }
