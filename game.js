@@ -406,9 +406,12 @@ class PlayerVehicle extends Vehicle {
         this.acceleration = 300;
         this.brakingForce = 400;
         this.spriteImage = images.player;
+        this.desiredAngle = 0; // Where player wants to face
+        this.rotationSpeed = 0.1; // How fast the car turns
     }
     
     accelerate() {
+        // Accelerate in the direction the sprite is facing
         const dir = new Vector2(Math.cos(this.angle), Math.sin(this.angle));
         this.applyForce(dir.multiply(this.acceleration));
     }
@@ -419,28 +422,34 @@ class PlayerVehicle extends Vehicle {
     }
     
     steerLeft() {
-        if (this.vel.magnitude() > 10) {
-            this.angle -= 0.05;
-        }
+        this.desiredAngle -= 0.05;
     }
     
     steerRight() {
-        if (this.vel.magnitude() > 10) {
-            this.angle += 0.05;
-        }
+        this.desiredAngle += 0.05;
     }
     
     steerToAngle(angle) {
-        if (this.vel.magnitude() > 10) {
-            let diff = angle - this.angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            this.angle += diff * 0.1;
-        }
+        this.desiredAngle = angle;
     }
     
     takeDamage(amount) {
         this.damage = Math.min(100, this.damage + amount);
+    }
+    
+    update(dt) {
+        // Smoothly rotate sprite to desired angle
+        let angleDiff = this.desiredAngle - this.angle;
+        
+        // Normalize angle difference to [-PI, PI]
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // Apply rotation with smooth interpolation
+        this.angle += angleDiff * this.rotationSpeed;
+        
+        // Call parent update (which moves the vehicle)
+        super.update(dt);
     }
     
     draw(ctx) {
@@ -458,6 +467,16 @@ class PlayerVehicle extends Vehicle {
             ctx.fillStyle = '#00ff00';
             ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
         }
+        
+        // Draw direction arrow indicator
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -30);
+        ctx.lineTo(-5, -20);
+        ctx.moveTo(0, -30);
+        ctx.lineTo(5, -20);
+        ctx.stroke();
         
         ctx.restore();
     }
@@ -844,8 +863,8 @@ class Game {
             
             if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') this.keys['gas'] = true;
             if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') this.keys['brake'] = true;
-            if (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft') this.keys['left'] = true;
-            if (e.key.toLowerCase() === 'd' || e.key === 'ArrowRight') this.keys['right'] = true;
+            if (e.key === 'ArrowLeft') this.keys['left'] = true;
+            if (e.key === 'ArrowRight') this.keys['right'] = true;
         });
         
         document.addEventListener('keyup', (e) => {
@@ -853,8 +872,8 @@ class Game {
             
             if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') this.keys['gas'] = false;
             if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') this.keys['brake'] = false;
-            if (e.key.toLowerCase() === 'a' || e.key === 'ArrowLeft') this.keys['left'] = false;
-            if (e.key.toLowerCase() === 'd' || e.key === 'ArrowRight') this.keys['right'] = false;
+            if (e.key === 'ArrowLeft') this.keys['left'] = false;
+            if (e.key === 'ArrowRight') this.keys['right'] = false;
         });
     }
     
