@@ -19,23 +19,35 @@
                 <div id="damage-value" class="value">0%</div>
             </div>
             <div id="district-panel" class="hud-panel bottom-right">
-                <div class="label">DISTRICT</div>
-                <div id="district-value" class="value">CENTRAL</div>
+                <div class="label">DISTANCE</div>
+                <div id="district-value" class="value">0 mi</div>
             </div>
         </div>
         <div id="event-screen" class="hidden">
             <div id="event-content"></div>
         </div>
         
-        <!-- Touch Controls -->
+        <!-- Touch Controls - Arrow Buttons -->
         <div id="touch-controls">
-            <div class="control-stick-container">
-                <div class="control-stick-bg">
-                    <div id="left-stick" class="control-stick"></div>
+            <!-- Steering Arrows -->
+            <div class="steering-section">
+                <div class="arrow-grid">
+                    <div class="arrow-empty"></div>
+                    <button id="up-arrow-btn" class="arrow-button up-arrow">▲</button>
+                    <div class="arrow-empty"></div>
+                    
+                    <button id="left-arrow-btn" class="arrow-button left-arrow">◄</button>
+                    <div class="arrow-center"></div>
+                    <button id="right-arrow-btn" class="arrow-button right-arrow">►</button>
+                    
+                    <div class="arrow-empty"></div>
+                    <button id="down-arrow-btn" class="arrow-button down-arrow">▼</button>
+                    <div class="arrow-empty"></div>
                 </div>
-                <div class="stick-label">STEER</div>
             </div>
-            <div class="control-buttons-container">
+
+            <!-- Gas and Brake Buttons -->
+            <div class="action-section">
                 <button id="gas-button" class="control-button gas-btn">GAS</button>
                 <button id="brake-button" class="control-button brake-btn">BRAKE</button>
             </div>
