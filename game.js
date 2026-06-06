@@ -14,11 +14,13 @@ resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 // Game Constants
-const GAME_WIDTH = 1280;
-const GAME_HEIGHT = 720;
+const GAME_WIDTH = 12800; // 12.5 miles in game units (1000 units = 1 mile)
+const GAME_HEIGHT = 7200;
 const PLAYER_MAX_SPEED = 189.5;
 const POLICE_MAX_SPEED = 200;
-const CITY_BOUNDARY = 100; // Distance from edge to escape
+const CITY_CENTER_X = GAME_WIDTH / 2;
+const CITY_CENTER_Y = GAME_HEIGHT / 2;
+const CITY_RADIUS = 6000; // Approximately 6 miles radius = 12.5 miles diameter
 
 // Game States
 const STATE = {
@@ -30,7 +32,8 @@ const STATE = {
 // Pursuit States
 const PURSUIT_STATE = {
     SEARCH: 'search',
-    PURSUIT: 'pursuit'
+    PURSUIT: 'pursuit',
+    CONTAINMENT: 'containment'
 };
 
 // Image assets
@@ -52,7 +55,6 @@ function loadImages() {
                 console.warn('Failed to load player image');
                 resolve();
             };
-            // Player car uses flipped image
             playerImg.src = 'flipped_image (2).png';
         }),
         new Promise((resolve) => {
@@ -65,10 +67,205 @@ function loadImages() {
                 console.warn('Failed to load police image');
                 resolve();
             };
-            // Police car uses file_000000... image
             policeImg.src = 'file_00000000f820720c96555bdb986101c9-removebg-preview.png';
         })
     ]);
+}
+
+// Road system
+class Road {
+    constructor(points, width = 120) {
+        this.points = points;
+        this.width = width;
+        this.segments = [];
+        this.computeSegments();
+    }
+
+    computeSegments() {
+        for (let i = 0; i < this.points.length - 1; i++) {
+            this.segments.push({
+                start: this.points[i],
+                end: this.points[i + 1]
+            });
+        }
+    }
+
+    draw(ctx) {
+        ctx.strokeStyle = '#444444';
+        ctx.lineWidth = this.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(this.points[0].x, this.points[0].y);
+        for (let i = 1; i < this.points.length; i++) {
+            ctx.lineTo(this.points[i].x, this.points[i].y);
+        }
+        ctx.stroke();
+
+        // Draw road markings
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([20, 20]);
+        ctx.beginPath();
+        ctx.moveTo(this.points[0].x, this.points[0].y);
+        for (let i = 1; i < this.points.length; i++) {
+            ctx.lineTo(this.points[i].x, this.points[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    isNearRoad(pos, distance = 100) {
+        for (let segment of this.segments) {
+            const dist = this.distanceToLineSegment(pos, segment.start, segment.end);
+            if (dist < distance) return true;
+        }
+        return false;
+    }
+
+    distanceToLineSegment(point, lineStart, lineEnd) {
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const t = Math.max(0, Math.min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / (dx * dx + dy * dy)));
+        const nearestX = lineStart.x + t * dx;
+        const nearestY = lineStart.y + t * dy;
+        const distX = point.x - nearestX;
+        const distY = point.y - nearestY;
+        return Math.sqrt(distX * distX + distY * distY);
+    }
+}
+
+class RoadSign {
+    constructor(x, y, text, direction) {
+        this.pos = { x, y };
+        this.text = text;
+        this.direction = direction;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        
+        // Draw sign post
+        ctx.fillStyle = '#444444';
+        ctx.fillRect(-5, -30, 10, 40);
+        
+        // Draw sign
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(-40, -30, 80, 40);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-40, -30, 80, 40);
+        
+        // Draw text
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.text, 0, -10);
+        
+        ctx.restore();
+    }
+}
+
+class RoadNetwork {
+    constructor() {
+        this.roads = [];
+        this.signs = [];
+        this.exits = [];
+        this.createRoads();
+    }
+
+    createRoads() {
+        const center = { x: CITY_CENTER_X, y: CITY_CENTER_Y };
+
+        // Main north route (leads to north exit)
+        const northRoute = [
+            { x: center.x, y: center.y },
+            { x: center.x + 100, y: center.y - 1000 },
+            { x: center.x + 200, y: center.y - 2000 },
+            { x: center.x + 300, y: center.y - 3500 },
+            { x: center.x + 300, y: center.y - 5800 }
+        ];
+        this.roads.push(new Road(northRoute, 120));
+        this.exits.push({ x: center.x + 300, y: center.y - 5800, name: 'North Exit' });
+        this.signs.push(new RoadSign(center.x + 100, center.y - 1500, 'North Exit', 'N'));
+
+        // Main south route (leads to south exit)
+        const southRoute = [
+            { x: center.x, y: center.y },
+            { x: center.x - 150, y: center.y + 1000 },
+            { x: center.x - 300, y: center.y + 2000 },
+            { x: center.x - 400, y: center.y + 3500 },
+            { x: center.x - 400, y: center.y + 5800 }
+        ];
+        this.roads.push(new Road(southRoute, 120));
+        this.exits.push({ x: center.x - 400, y: center.y + 5800, name: 'South Exit' });
+        this.signs.push(new RoadSign(center.x - 150, center.y + 1500, 'South Exit', 'S'));
+
+        // East route (leads to east exit)
+        const eastRoute = [
+            { x: center.x, y: center.y },
+            { x: center.x + 1500, y: center.y - 200 },
+            { x: center.x + 3000, y: center.y - 500 },
+            { x: center.x + 4500, y: center.y - 300 },
+            { x: center.x + 5800, y: center.y }
+        ];
+        this.roads.push(new Road(eastRoute, 120));
+        this.exits.push({ x: center.x + 5800, y: center.y, name: 'East Exit' });
+        this.signs.push(new RoadSign(center.x + 2000, center.y - 500, 'East Exit', 'E'));
+
+        // West route (leads to west exit)
+        const westRoute = [
+            { x: center.x, y: center.y },
+            { x: center.x - 1500, y: center.y + 200 },
+            { x: center.x - 3000, y: center.y + 500 },
+            { x: center.x - 4500, y: center.y + 300 },
+            { x: center.x - 5800, y: center.y }
+        ];
+        this.roads.push(new Road(westRoute, 120));
+        this.exits.push({ x: center.x - 5800, y: center.y, name: 'West Exit' });
+        this.signs.push(new RoadSign(center.x - 2000, center.y + 500, 'West Exit', 'W'));
+
+        // Branch routes with intersections
+        const neBranch = [
+            { x: center.x + 100, y: center.y - 1000 },
+            { x: center.x + 1500, y: center.y - 1500 },
+            { x: center.x + 3000, y: center.y - 2500 },
+            { x: center.x + 4500, y: center.y - 4000 },
+            { x: center.x + 5800, y: center.y - 5500 }
+        ];
+        this.roads.push(new Road(neBranch, 100));
+
+        const swBranch = [
+            { x: center.x - 150, y: center.y + 1000 },
+            { x: center.x - 1500, y: center.y + 1500 },
+            { x: center.x - 3000, y: center.y + 2500 },
+            { x: center.x - 4500, y: center.y + 4000 },
+            { x: center.x - 5800, y: center.y + 5500 }
+        ];
+        this.roads.push(new Road(swBranch, 100));
+    }
+
+    draw(ctx) {
+        for (let road of this.roads) {
+            road.draw(ctx);
+        }
+        for (let sign of this.signs) {
+            sign.draw(ctx);
+        }
+    }
+
+    isNearRoad(pos) {
+        for (let road of this.roads) {
+            if (road.isNearRoad(pos, 150)) return true;
+        }
+        return false;
+    }
+
+    getExits() {
+        return this.exits;
+    }
 }
 
 class Camera {
@@ -78,19 +275,16 @@ class Camera {
         this.width = width;
         this.height = height;
         this.zoom = 1;
-        this.smoothing = 0.1; // Smooth camera follow
+        this.smoothing = 0.1;
     }
 
     update(target) {
-        // Calculate desired camera position (centered on target)
         const desiredX = target.x - this.width / (2 * this.zoom);
         const desiredY = target.y - this.height / (2 * this.zoom);
 
-        // Smooth camera movement
         this.x += (desiredX - this.x) * this.smoothing;
         this.y += (desiredY - this.y) * this.smoothing;
 
-        // Clamp camera to world bounds
         this.x = Math.max(0, Math.min(this.x, GAME_WIDTH - this.width / this.zoom));
         this.y = Math.max(0, Math.min(this.y, GAME_HEIGHT - this.height / this.zoom));
     }
@@ -163,32 +357,25 @@ class Vehicle {
         this.color = color;
         this.maxSpeed = maxSpeed;
         this.angle = 0;
-        this.angularVel = 0;
     }
     
     update(dt) {
-        // Apply acceleration
         this.vel = this.vel.add(this.acc.multiply(dt));
         
-        // Limit speed
         const speed = this.vel.magnitude();
         if (speed > this.maxSpeed) {
             this.vel = this.vel.normalize().multiply(this.maxSpeed);
         }
         
-        // Update position
         this.pos = this.pos.add(this.vel.multiply(dt));
         
-        // Update angle based on velocity
         if (this.vel.magnitude() > 0.1) {
             this.angle = Math.atan2(this.vel.y, this.vel.x);
         }
         
-        // Clamp to bounds
         this.pos.x = Math.max(0, Math.min(GAME_WIDTH, this.pos.x));
         this.pos.y = Math.max(0, Math.min(GAME_HEIGHT, this.pos.y));
         
-        // Friction
         this.vel = this.vel.multiply(0.95);
         this.acc = new Vector2(0, 0);
     }
@@ -202,11 +389,9 @@ class Vehicle {
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
         
-        // Draw vehicle body
         ctx.fillStyle = this.color;
         ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
         
-        // Draw direction indicator
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
         
@@ -247,9 +432,7 @@ class PlayerVehicle extends Vehicle {
     
     steerToAngle(angle) {
         if (this.vel.magnitude() > 10) {
-            // Smoothly rotate towards target angle
             let diff = angle - this.angle;
-            // Normalize angle difference to [-PI, PI]
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
             this.angle += diff * 0.1;
@@ -265,19 +448,13 @@ class PlayerVehicle extends Vehicle {
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
         
-        // Draw sprite if loaded, otherwise fallback to geometric shape
         if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalHeight !== 0) {
             ctx.drawImage(this.spriteImage, -this.width / 2, -this.height / 2, this.width, this.height);
         } else {
-            // Fallback geometric vehicle
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
-            
-            // Draw red interior accents
             ctx.fillStyle = '#ff0000';
             ctx.fillRect(-this.width / 2 + 5, -this.height / 2 + 10, this.width - 10, 15);
-            
-            // Draw direction indicator
             ctx.fillStyle = '#00ff00';
             ctx.fillRect(this.width / 2 - 8, -4, 8, 8);
         }
@@ -287,58 +464,132 @@ class PlayerVehicle extends Vehicle {
 }
 
 class PoliceVehicle extends Vehicle {
-    constructor(x, y) {
+    constructor(x, y, id) {
         super(x, y, 38, 58, '#000000', POLICE_MAX_SPEED);
+        this.id = id;
         this.acceleration = 280;
-        this.detectionRange = 300;
-        this.visualRange = 250;
+        this.detectionRange = 800;
+        this.visualRange = 600;
         this.state = PURSUIT_STATE.SEARCH;
-        this.searchTimer = 0;
-        this.lastPlayerPos = new Vector2(x, y);
+        this.targetPos = new Vector2(x, y);
         this.spriteImage = images.police;
+        this.pitAttemptCooldown = 0;
+        this.ramCooldown = 0;
     }
     
-    update(dt, player) {
-        // Check for player detection
+    update(dt, player, allPolice) {
+        this.pitAttemptCooldown = Math.max(0, this.pitAttemptCooldown - dt);
+        this.ramCooldown = Math.max(0, this.ramCooldown - dt);
+
         const distToPlayer = this.pos.distance(player.pos);
         
-        if (distToPlayer < this.visualRange) {
-            this.state = PURSUIT_STATE.PURSUIT;
-            this.lastPlayerPos = new Vector2(player.pos.x, player.pos.y);
-        } else if (distToPlayer > this.visualRange * 1.5) {
-            this.state = PURSUIT_STATE.SEARCH;
-        }
+        // Priority 1: Containment - Try to block player's escape
+        const playerDistFromCenter = Math.sqrt(
+            Math.pow(player.pos.x - CITY_CENTER_X, 2) + 
+            Math.pow(player.pos.y - CITY_CENTER_Y, 2)
+        );
         
-        // AI behavior
-        if (this.state === PURSUIT_STATE.PURSUIT) {
-            this.chaseBehavior(player);
+        if (playerDistFromCenter > CITY_RADIUS - 1000) {
+            // Player is near the border, focus on containment
+            this.state = PURSUIT_STATE.CONTAINMENT;
+            this.containmentBehavior(player, allPolice);
+        } else if (distToPlayer < this.visualRange) {
+            // Player detected, pursue but coordinate
+            this.state = PURSUIT_STATE.PURSUIT;
+            this.coordinatedPursuitBehavior(player, allPolice);
         } else {
-            this.searchBehavior(player);
+            // Search for player
+            this.state = PURSUIT_STATE.SEARCH;
+            this.searchBehavior();
         }
         
         super.update(dt);
     }
     
-    chaseBehavior(player) {
+    coordinatedPursuitBehavior(player, allPolice) {
         const toPlayer = player.pos.subtract(this.pos).normalize();
         this.applyForce(toPlayer.multiply(this.acceleration * 1.2));
-        
-        // Orient towards player
         this.angle = Math.atan2(toPlayer.y, toPlayer.x);
-    }
-    
-    searchBehavior(player) {
-        const toLastPos = this.lastPlayerPos.subtract(this.pos);
         
-        if (toLastPos.magnitude() < 20) {
-            // Change search direction
-            const angle = Math.random() * Math.PI * 2;
-            this.lastPlayerPos = this.pos.add(new Vector2(Math.cos(angle) * 200, Math.sin(angle) * 200));
+        // Try to pit maneuver if conditions are right
+        const distToPlayer = this.pos.distance(player.pos);
+        if (distToPlayer < 150 && this.pitAttemptCooldown === 0 && Math.random() < 0.02) {
+            this.attemptPitManeuver(player);
+            this.pitAttemptCooldown = 5;
         }
         
-        const dir = toLastPos.normalize();
-        this.applyForce(dir.multiply(this.acceleration * 0.8));
-        this.angle = Math.atan2(dir.y, dir.x);
+        // Try to ram if moving fast enough
+        if (distToPlayer < 120 && this.ramCooldown === 0 && this.vel.magnitude() > 100) {
+            this.applyForce(toPlayer.multiply(this.acceleration * 2));
+            this.ramCooldown = 3;
+        }
+    }
+    
+    containmentBehavior(player, allPolice) {
+        // Calculate player's direction of travel
+        const playerDir = player.vel.normalize();
+        
+        // Predict where player is heading
+        const predictedPos = player.pos.add(playerDir.multiply(500));
+        
+        // Position to intercept and block
+        const toIntercept = predictedPos.subtract(this.pos);
+        
+        if (toIntercept.magnitude() > 10) {
+            const dir = toIntercept.normalize();
+            this.applyForce(dir.multiply(this.acceleration * 1.3));
+            this.angle = Math.atan2(dir.y, dir.x);
+        }
+        
+        // Try to box in player with other police
+        this.coordinateWithOtherUnits(player, allPolice);
+    }
+    
+    coordinateWithOtherUnits(player, allPolice) {
+        // Find other nearby police units
+        for (let other of allPolice) {
+            if (other.id !== this.id) {
+                const distToOther = this.pos.distance(other.pos);
+                if (distToOther < 300 && distToOther > 0) {
+                    // Coordinate to box in player
+                    const midpoint = this.pos.add(other.pos).multiply(0.5);
+                    const toPlayer = player.pos.subtract(midpoint);
+                    
+                    // Move in formation to trap player
+                    if (toPlayer.magnitude() < 400) {
+                        const dir = toPlayer.normalize();
+                        this.applyForce(dir.multiply(this.acceleration * 0.5));
+                    }
+                }
+            }
+        }
+    }
+    
+    attemptPitManeuver(player) {
+        // Calculate angle to perform PIT
+        const toPlayer = player.pos.subtract(this.pos);
+        const angle = Math.atan2(toPlayer.y, toPlayer.x);
+        
+        // Angle difference from player's direction
+        let angleDiff = angle - player.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // If we're at an angle, increase damage
+        if (Math.abs(angleDiff) > 0.5) {
+            player.takeDamage(8);
+            // Push player back
+            const pushDir = player.vel.normalize().multiply(-150);
+            player.applyForce(pushDir);
+        }
+    }
+    
+    searchBehavior() {
+        // Random patrol
+        const angle = Math.random() * Math.PI * 2;
+        const searchDir = new Vector2(Math.cos(angle), Math.sin(angle));
+        this.applyForce(searchDir.multiply(this.acceleration * 0.5));
+        this.angle += (Math.random() - 0.5) * 0.02;
     }
     
     draw(ctx) {
@@ -346,24 +597,17 @@ class PoliceVehicle extends Vehicle {
         ctx.translate(this.pos.x, this.pos.y);
         ctx.rotate(this.angle);
         
-        // Draw sprite if loaded, otherwise fallback to geometric shape
         if (this.spriteImage && this.spriteImage.complete && this.spriteImage.naturalHeight !== 0) {
             ctx.drawImage(this.spriteImage, -this.width / 2, -this.height / 2, this.width, this.height);
         } else {
-            // Fallback geometric vehicle
             ctx.fillStyle = '#000000';
             ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
-            
-            // Draw police stripe
             ctx.fillStyle = '#ffff00';
             ctx.fillRect(-this.width / 2, -this.height / 2 + 18, this.width, 6);
-            
-            // Draw emergency lights
             ctx.fillStyle = '#ff0000';
             ctx.beginPath();
             ctx.arc(-this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
             ctx.fill();
-            
             ctx.fillStyle = '#0000ff';
             ctx.beginPath();
             ctx.arc(this.width / 4, -this.height / 2 - 3, 4, 0, Math.PI * 2);
@@ -371,6 +615,29 @@ class PoliceVehicle extends Vehicle {
         }
         
         ctx.restore();
+    }
+}
+
+class PoliceRoadblock {
+    constructor(x, y, width = 150, height = 40) {
+        this.pos = { x, y };
+        this.width = width;
+        this.height = height;
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = 'rgba(100, 100, 200, 0.7)';
+        ctx.fillRect(this.pos.x - this.width / 2, this.pos.y - this.height / 2, this.width, this.height);
+        ctx.strokeStyle = '#0000ff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(this.pos.x - this.width / 2, this.pos.y - this.height / 2, this.width, this.height);
+    }
+
+    collidesWith(vehicle) {
+        const dx = vehicle.pos.x - this.pos.x;
+        const dy = vehicle.pos.y - this.pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < vehicle.width / 2 + this.width / 2;
     }
 }
 
@@ -392,12 +659,10 @@ class Joystick {
     setupEventListeners() {
         const container = this.container;
 
-        // Touch events
         container.addEventListener('touchstart', (e) => this.handleStart(e), false);
         container.addEventListener('touchmove', (e) => this.handleMove(e), false);
         container.addEventListener('touchend', (e) => this.handleEnd(e), false);
 
-        // Mouse events (for desktop testing)
         container.addEventListener('mousedown', (e) => this.handleStart(e), false);
         document.addEventListener('mousemove', (e) => this.handleMove(e), false);
         document.addEventListener('mouseup', (e) => this.handleEnd(e), false);
@@ -495,14 +760,12 @@ class TouchController {
         this.gasActive = false;
         this.brakeActive = false;
         
-        // Initialize joystick
         this.joystick = new Joystick(this.joystickContainer, 120);
         
         this.setupControls();
     }
     
     setupControls() {
-        // Gas button
         this.gasButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.gasActive = true;
@@ -518,7 +781,6 @@ class TouchController {
             this.gasActive = false;
         });
         
-        // Brake button
         this.brakeButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.brakeActive = true;
@@ -543,7 +805,6 @@ class TouchController {
             this.game.player.brake();
         }
         
-        // Joystick steering
         if (this.joystick.active && this.joystick.distance > 10) {
             this.game.player.steerToAngle(this.joystick.getAngle());
         }
@@ -555,29 +816,29 @@ class Game {
         this.state = STATE.RUNNING;
         this.pursuitState = PURSUIT_STATE.SEARCH;
         this.lastTime = Date.now();
-        this.paused = false;
         
-        // Create camera
         this.camera = new Camera(canvas.width, canvas.height);
+        this.roadNetwork = new RoadNetwork();
         
-        // Create vehicles
-        this.player = new PlayerVehicle(GAME_WIDTH / 2, GAME_HEIGHT - 100);
-        this.police = new PoliceVehicle(100, 100);
+        this.player = new PlayerVehicle(CITY_CENTER_X, CITY_CENTER_Y);
         
-        // Roadblocks
+        // Create multiple police units
+        this.policeUnits = [];
+        this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X + 1000, CITY_CENTER_Y, 0));
+        this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X - 1000, CITY_CENTER_Y, 1));
+        this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X, CITY_CENTER_Y + 1000, 2));
+        this.policeUnits.push(new PoliceVehicle(CITY_CENTER_X, CITY_CENTER_Y - 1000, 3));
+        
         this.roadblocks = [];
         this.spawnRoadblock();
         
-        // Input handling
         this.keys = {};
         this.setupInput();
         
-        // Touch controller
         this.touchController = new TouchController(this);
     }
     
     setupInput() {
-        // Keyboard
         document.addEventListener('keydown', (e) => {
             this.keys[e.key] = true;
             
@@ -598,57 +859,57 @@ class Game {
     }
     
     handleInput() {
-        // Keyboard input
         if (this.keys['gas']) this.player.accelerate();
         if (this.keys['brake']) this.player.brake();
         if (this.keys['left']) this.player.steerLeft();
         if (this.keys['right']) this.player.steerRight();
         
-        // Touch input
         this.touchController.update();
     }
     
     checkCollisions() {
         // Police collision with player
-        const distToPolice = this.player.pos.distance(this.police.pos);
-        if (distToPolice < 40) {
-            this.player.takeDamage(5);
-            this.police.vel = this.police.vel.multiply(-0.5);
+        for (let police of this.policeUnits) {
+            const distToPolice = this.player.pos.distance(police.pos);
+            if (distToPolice < 60) {
+                this.player.takeDamage(3);
+                police.vel = police.vel.multiply(-0.3);
+            }
         }
         
         // Roadblock collisions
         for (let roadblock of this.roadblocks) {
-            if (this.collideWithRoadblock(this.player, roadblock)) {
-                this.player.takeDamage(3);
+            if (roadblock.collidesWith(this.player)) {
+                this.player.takeDamage(5);
             }
         }
     }
     
-    collideWithRoadblock(vehicle, roadblock) {
-        const dx = vehicle.pos.x - roadblock.x;
-        const dy = vehicle.pos.y - roadblock.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < vehicle.width / 2 + roadblock.width / 2;
-    }
-    
     spawnRoadblock() {
-        // Spawn roadblocks at random locations
-        if (this.roadblocks.length < 3) {
-            const x = Math.random() * (GAME_WIDTH - 100) + 50;
-            const y = Math.random() * (GAME_HEIGHT - 100) + 50;
-            this.roadblocks.push({ x, y, width: 80, height: 80 });
+        // Spawn roadblocks strategically near exits
+        if (this.roadblocks.length < 6) {
+            const exits = this.roadNetwork.getExits();
+            const exit = exits[Math.floor(Math.random() * exits.length)];
+            
+            // Spawn near exit but offset
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 500 + Math.random() * 1000;
+            const x = exit.x + Math.cos(angle) * distance;
+            const y = exit.y + Math.sin(angle) * distance;
+            
+            this.roadblocks.push(new PoliceRoadblock(x, y));
         }
     }
     
     checkVictory() {
-        // Check if player escaped the city
-        if (this.player.pos.x < CITY_BOUNDARY || 
-            this.player.pos.x > GAME_WIDTH - CITY_BOUNDARY ||
-            this.player.pos.y < CITY_BOUNDARY ||
-            this.player.pos.y > GAME_HEIGHT - CITY_BOUNDARY) {
-            this.showEventScreen('CENTRAL CITY ESCAPED');
-            this.state = STATE.VICTORY;
-            return true;
+        const exits = this.roadNetwork.getExits();
+        for (let exit of exits) {
+            const distToExit = this.player.pos.distance(new Vector2(exit.x, exit.y));
+            if (distToExit < 200) {
+                this.showEventScreen('ESCAPED THE CITY');
+                this.state = STATE.VICTORY;
+                return true;
+            }
         }
         return false;
     }
@@ -660,11 +921,12 @@ class Game {
             return true;
         }
         
-        // Check if apprehended (police too close)
-        if (this.player.pos.distance(this.police.pos) < 25 && this.player.vel.magnitude() < 10) {
-            this.showEventScreen('YOU WERE CAUGHT');
-            this.state = STATE.GAME_OVER;
-            return true;
+        for (let police of this.policeUnits) {
+            if (this.player.pos.distance(police.pos) < 40 && this.player.vel.magnitude() < 20) {
+                this.showEventScreen('YOU WERE CAUGHT');
+                this.state = STATE.GAME_OVER;
+                return true;
+            }
         }
         
         return false;
@@ -684,80 +946,72 @@ class Game {
         const dt = (now - this.lastTime) / 1000;
         this.lastTime = now;
         
-        // Cap dt to prevent large jumps
         const cappedDt = Math.min(dt, 0.016);
         
         this.handleInput();
         this.player.update(cappedDt);
-        this.police.update(cappedDt, this.player);
+        
+        // Update all police units with coordination
+        for (let police of this.policeUnits) {
+            police.update(cappedDt, this.player, this.policeUnits);
+        }
+        
         this.checkCollisions();
-        
-        // Update camera to follow player
         this.camera.update(this.player.pos);
+        this.pursuitState = this.policeUnits[0].state;
         
-        // Update pursuit state for HUD
-        this.pursuitState = this.police.state;
-        
-        // Check win/lose conditions
         this.checkVictory();
         this.checkGameOver();
         
-        // Spawn roadblocks occasionally
-        if (Math.random() < 0.001) {
+        if (Math.random() < 0.0005) {
             this.spawnRoadblock();
         }
     }
     
     draw() {
-        // Clear canvas
-        ctx.fillStyle = '#222222';
+        ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Apply camera transformation
         this.camera.apply(ctx);
         
-        // Draw city grid
-        ctx.strokeStyle = '#333333';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < GAME_WIDTH; i += 80) {
-            ctx.beginPath();
-            ctx.moveTo(i, 0);
-            ctx.lineTo(i, GAME_HEIGHT);
-            ctx.stroke();
-        }
-        for (let i = 0; i < GAME_HEIGHT; i += 80) {
-            ctx.beginPath();
-            ctx.moveTo(0, i);
-            ctx.lineTo(GAME_WIDTH, i);
-            ctx.stroke();
-        }
-        
-        // Draw city boundaries
-        ctx.strokeStyle = '#00ff00';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(CITY_BOUNDARY, CITY_BOUNDARY, GAME_WIDTH - CITY_BOUNDARY * 2, GAME_HEIGHT - CITY_BOUNDARY * 2);
+        // Draw city boundary
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.3)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.arc(CITY_CENTER_X, CITY_CENTER_Y, CITY_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.setLineDash([]);
         
+        // Draw roads first
+        this.roadNetwork.draw(ctx);
+        
         // Draw roadblocks
-        ctx.fillStyle = 'rgba(255, 100, 100, 0.5)';
         for (let roadblock of this.roadblocks) {
-            ctx.fillRect(roadblock.x - roadblock.width / 2, roadblock.y - roadblock.height / 2, roadblock.width, roadblock.height);
-            ctx.strokeStyle = '#ff0000';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(roadblock.x - roadblock.width / 2, roadblock.y - roadblock.height / 2, roadblock.width, roadblock.height);
+            roadblock.draw(ctx);
         }
         
         // Draw vehicles
         this.player.draw(ctx);
-        this.police.draw(ctx);
+        for (let police of this.policeUnits) {
+            police.draw(ctx);
+        }
         
-        // Restore canvas transformation
         this.camera.restore(ctx);
         
         // Update HUD
         document.getElementById('pursuit-status').textContent = this.pursuitState.toUpperCase();
         document.getElementById('damage-value').textContent = Math.floor(this.player.damage) + '%';
+        
+        // Calculate distance to nearest exit
+        const exits = this.roadNetwork.getExits();
+        let minDist = Infinity;
+        for (let exit of exits) {
+            const dist = this.player.pos.distance(new Vector2(exit.x, exit.y));
+            minDist = Math.min(minDist, dist);
+        }
+        const milesDist = (minDist / 1000).toFixed(1);
+        document.getElementById('district-value').textContent = milesDist + ' mi';
     }
     
     run() {
@@ -767,7 +1021,6 @@ class Game {
     }
 }
 
-// Load images and start the game
 loadImages().then(() => {
     const game = new Game();
     game.run();
